@@ -1,0 +1,42 @@
+# Source media — users bring their own
+*.mp4
+*.mov
+*.m4v
+*.avi
+*.mkv
+*.webm
+*.flv
+*.wmv
+*.mp3
+*.wav
+*.m4a
+*.aac
+*.flac
+*.ogg
+*.opus
+
+# Generated outputs
+*_cuts.osp
+*_cuts.fcpxml
+*_cuts.json
+*_cortes.osp
+*_cortes.fcpxml
+*_cortes.json
+*_clean.mp3
+*_clean.wav
+*_limpo.*
+
+# Editor caches
+*_assets/
+*_cuts_assets/
+*_cortes_assets/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# OS
+.DS_Store
