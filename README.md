@@ -51,6 +51,14 @@ Produces three files:
 
 The original MP4 is **not** modified. Every "keep" segment becomes an individual clip on the timeline — drag the borders to fine-tune cuts before exporting the final video.
 
+### Captions (optional)
+
+```bash
+python3 clean_video.py input.mp4 --captions
+```
+
+`--captions` generates `input_cuts.srt` with word timestamps mapped to the NEW cut timeline (so filler words that were cut don't appear in the captions). Groups 3-5 words per line, up to ~2s each. Import the SRT into your editor — OpenShot, DaVinci, FCP and most players default to centered-bottom positioning.
+
 ## How to open the outputs
 
 - **OpenShot**: `File > Open Project…` → pick the `.osp`. Clips appear stacked on Track 4.
@@ -74,6 +82,7 @@ The original MP4 is **not** modified. Every "keep" segment becomes an individual
 | `--model` | `base` (audio) / `small` (video) | Whisper size. `tiny` → `large`. Larger = slower + more accurate |
 | `--silence` | `0.8` | Seconds of silence above which to cut. Lower = more aggressive |
 | `--pad` | `0.1` | Safety margin (seconds) around each filler to avoid clipping real words |
+| `--captions` | off | Video only. Emits a `.srt` subtitle file aligned to the cut timeline |
 
 ## Language
 
