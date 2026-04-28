@@ -28,7 +28,6 @@ import argparse
 import json
 import uuid
 import shutil
-import random
 
 # Reuse detection logic from the audio script
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -45,12 +44,6 @@ from clean_audio import (
 OPENSHOT_QT_VERSION = "3.2.1"
 LIBOPENSHOT_VERSION = "0.4.0"
 FCPXML_VERSION = "1.9"
-
-# Zoom effect defaults (Ken Burns style)
-ZOOM_MIN_DURATION = 3.0      # only zoom clips >= 3 seconds
-ZOOM_PROBABILITY = 0.30      # ~30% of eligible clips get zoom
-ZOOM_SCALE_START = 1.0
-ZOOM_SCALE_END = 1.08        # subtle: 8% zoom-in
 
 # Caption defaults (TikTok/Shorts style)
 CAPTION_MAX_WORDS = 5
@@ -195,35 +188,8 @@ def point(y, interpolation=0):
     return {"Points": [{"co": {"X": 1.0, "Y": y}, "interpolation": interpolation}]}
 
 
-def zoom_points(clip_frames, start_value, end_value, interpolation=0):
-    """Two-keyframe OpenShot animation: start_value at frame 1, end_value at last frame.
-
-    Used for scale_x / scale_y to produce a Ken Burns-style slow zoom.
-    """
-    end_frame = max(2, clip_frames)
-    return {
-        "Points": [
-            {"co": {"X": 1, "Y": float(start_value)}, "interpolation": interpolation},
-            {"co": {"X": end_frame, "Y": float(end_value)}, "interpolation": interpolation},
-        ]
-    }
-
-
-def build_clip_entry(clip_id, file_entry, file_id, position, start, end, title,
-                     zoom_range=None, fps_num=30, fps_den=1):
-    """Build a clips[] entry for the .osp project.
-
-    zoom_range: None for no zoom, or (start_scale, end_scale) tuple for animated zoom.
-    """
-    if zoom_range:
-        clip_duration = end - start
-        clip_frames = max(2, int(round(clip_duration * fps_num / fps_den)))
-        scale_x = zoom_points(clip_frames, zoom_range[0], zoom_range[1])
-        scale_y = zoom_points(clip_frames, zoom_range[0], zoom_range[1])
-    else:
-        scale_x = point(1.0)
-        scale_y = point(1.0)
-
+def build_clip_entry(clip_id, file_entry, file_id, position, start, end, title):
+    """Build a clips[] entry for the .osp project."""
     return {
         "id": clip_id,
         "layer": 4000000,
@@ -260,8 +226,8 @@ def build_clip_entry(clip_id, file_entry, file_id, position, start, end, title,
         "perspective_c4_y": point(-1.0),
         "rotation": point(0.0),
         "scale": 1,
-        "scale_x": scale_x,
-        "scale_y": scale_y,
+        "scale_x": point(1.0),
+        "scale_y": point(1.0),
         "shear_x": point(0.0),
         "shear_y": point(0.0),
         "time": point(1.0),
@@ -276,30 +242,10 @@ def build_clip_entry(clip_id, file_entry, file_id, position, start, end, title,
     }
 
 
-def select_zoomed_indices(keep, min_duration=ZOOM_MIN_DURATION,
-                          probability=ZOOM_PROBABILITY, seed=None):
-    """Return a set of clip indices that should get the zoom effect.
-
-    Eligibility: clip duration >= min_duration.
-    Selection: `probability` fraction of eligible clips, chosen randomly.
-    """
-    rng = random.Random(seed)
-    eligible = [i for i, (s, e) in enumerate(keep) if (e - s) >= min_duration]
-    n = int(round(len(eligible) * probability))
-    if n <= 0:
-        return set()
-    return set(rng.sample(eligible, min(n, len(eligible))))
-
-
-def build_osp_project(input_video, keep, meta, zoomed_indices=None):
-    """Build the full OpenShot project JSON.
-
-    zoomed_indices: optional set of clip indices (into `keep`) that should
-    receive a Ken Burns zoom effect.
-    """
+def build_osp_project(input_video, keep, meta):
+    """Build the full OpenShot project JSON."""
     abs_path = os.path.abspath(input_video)
     name = os.path.basename(input_video)
-    zoomed_indices = zoomed_indices or set()
 
     file_id = "F0"
     file_entry = build_file_entry(file_id, abs_path, meta)
@@ -308,7 +254,6 @@ def build_osp_project(input_video, keep, meta, zoomed_indices=None):
     position = 0.0
     for i, (start, end) in enumerate(keep):
         clip_duration = end - start
-        zoom_range = (ZOOM_SCALE_START, ZOOM_SCALE_END) if i in zoomed_indices else None
         clip = build_clip_entry(
             clip_id=f"C{i}",
             file_entry=file_entry,
@@ -317,9 +262,6 @@ def build_osp_project(input_video, keep, meta, zoomed_indices=None):
             start=start,
             end=end,
             title=name,
-            zoom_range=zoom_range,
-            fps_num=meta["fps_num"],
-            fps_den=meta["fps_den"],
         )
         clips.append(clip)
         position += clip_duration
@@ -387,12 +329,8 @@ def fcp_time(seconds, fps_num, fps_den):
     return f"{frames * fps_den}/{fps_num}s"
 
 
-def build_fcpxml(input_video, keep, meta, zoomed_indices=None):
-    """Build an FCPXML 1.9 string (imports in DaVinci Resolve / FCP).
-
-    zoomed_indices: optional set of clip indices that should receive a
-    keyframed scale transform (Ken Burns zoom-in).
-    """
+def build_fcpxml(input_video, keep, meta):
+    """Build an FCPXML 1.9 string (imports in DaVinci Resolve / FCP)."""
     from urllib.parse import quote
     from xml.sax.saxutils import escape as xml_escape
 
@@ -401,7 +339,6 @@ def build_fcpxml(input_video, keep, meta, zoomed_indices=None):
     name = os.path.basename(input_video)
     name_safe = xml_escape(name)
     name_noext = xml_escape(os.path.splitext(name)[0])
-    zoomed_indices = zoomed_indices or set()
 
     fps_num = meta["fps_num"]
     fps_den = meta["fps_den"]
@@ -422,36 +359,15 @@ def build_fcpxml(input_video, keep, meta, zoomed_indices=None):
 
     clips_xml = []
     position = 0.0
-    for i, (start, end) in enumerate(keep):
+    for start, end in keep:
         duration = end - start
-        offset_str = fcp_time(position, fps_num, fps_den)
-        start_str = fcp_time(start, fps_num, fps_den)
-        duration_str = fcp_time(duration, fps_num, fps_den)
-
-        if i in zoomed_indices:
-            # Animated scale (Ken Burns) — keyframe times are clip-local,
-            # starting at 0s and ending at clip duration
-            zoom_xml = (
-                f'\n                            <adjust-transform>'
-                f'\n                                <param name="scale">'
-                f'\n                                    <keyframe time="0s" value="{ZOOM_SCALE_START} {ZOOM_SCALE_START}"/>'
-                f'\n                                    <keyframe time="{duration_str}" value="{ZOOM_SCALE_END} {ZOOM_SCALE_END}"/>'
-                f'\n                                </param>'
-                f'\n                            </adjust-transform>'
-                f'\n                        '
-            )
-            clips_xml.append(
-                f'                        <asset-clip ref="r2" '
-                f'offset="{offset_str}" start="{start_str}" duration="{duration_str}" '
-                f'name="{name_safe}">'
-                f'{zoom_xml}</asset-clip>'
-            )
-        else:
-            clips_xml.append(
-                f'                        <asset-clip ref="r2" '
-                f'offset="{offset_str}" start="{start_str}" duration="{duration_str}" '
-                f'name="{name_safe}"/>'
-            )
+        clips_xml.append(
+            f'                        <asset-clip ref="r2" '
+            f'offset="{fcp_time(position, fps_num, fps_den)}" '
+            f'start="{fcp_time(start, fps_num, fps_den)}" '
+            f'duration="{fcp_time(duration, fps_num, fps_den)}" '
+            f'name="{name_safe}"/>'
+        )
         position += duration
 
     sequence_duration = fcp_time(position, fps_num, fps_den)
@@ -594,12 +510,8 @@ def main():
                         help=f"Seconds of pause above which to cut (default: {DEFAULT_PAUSE_THRESHOLD})")
     parser.add_argument("--pad", type=float, default=DEFAULT_PADDING,
                         help=f"Safety margin in seconds around each filler (default: {DEFAULT_PADDING})")
-    parser.add_argument("--zoom", action="store_true",
-                        help="Add a subtle Ken Burns zoom to ~30%% of clips longer than 3s")
     parser.add_argument("--captions", action="store_true",
                         help="Generate an SRT subtitle file aligned to the cut timeline")
-    parser.add_argument("--seed", type=int, default=None,
-                        help="Random seed for reproducible zoom selection (default: non-deterministic)")
 
     args = parser.parse_args()
 
@@ -627,8 +539,6 @@ def main():
     print(f"Fallback: {output_json}")
     print(f"Model:    {args.model}")
     print(f"Silence:  cut pauses > {args.silence}s")
-    if args.zoom:
-        print(f"Zoom:     enabled (~{int(ZOOM_PROBABILITY*100)}% of clips >= {ZOOM_MIN_DURATION}s, scale {ZOOM_SCALE_START}->{ZOOM_SCALE_END})")
     print("-" * 60)
 
     print("[1/4] Extracting video metadata with ffprobe...")
@@ -653,17 +563,12 @@ def main():
     print(f"      savings:           {savings:.1f}s ({savings/meta['duration']*100:.1f}%)")
     print("-" * 60)
 
-    zoomed_indices = set()
-    if args.zoom:
-        zoomed_indices = select_zoomed_indices(keep, seed=args.seed)
-        print(f"      zoom applied to {len(zoomed_indices)} of {len(keep)} clips")
-
     print(f"[4/4] Writing OpenShot project and FCPXML...")
-    project = build_osp_project(args.input, keep, meta, zoomed_indices=zoomed_indices)
+    project = build_osp_project(args.input, keep, meta)
     with open(output_osp, "w", encoding="utf-8") as f:
         json.dump(project, f, indent=2, ensure_ascii=False)
 
-    fcpxml = build_fcpxml(args.input, keep, meta, zoomed_indices=zoomed_indices)
+    fcpxml = build_fcpxml(args.input, keep, meta)
     with open(output_fcpxml, "w", encoding="utf-8") as f:
         f.write(fcpxml)
 
@@ -672,7 +577,6 @@ def main():
         "video": os.path.abspath(args.input),
         "original_duration": meta["duration"],
         "final_duration": final_time,
-        "zoomed_clip_indices": sorted(zoomed_indices),
         "keep_segments": [
             {"position": sum(e - s for s, e in keep[:i]), "source_start": start, "source_end": end, "duration": end - start}
             for i, (start, end) in enumerate(keep)

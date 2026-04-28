@@ -51,15 +51,13 @@ Produces three files:
 
 The original MP4 is **not** modified. Every "keep" segment becomes an individual clip on the timeline — drag the borders to fine-tune cuts before exporting the final video.
 
-### Zoom + captions (optional)
+### Captions (optional)
 
 ```bash
-python3 clean_video.py input.mp4 --zoom --captions
+python3 clean_video.py input.mp4 --captions
 ```
 
-- `--zoom` applies a subtle Ken Burns zoom-in (1.0 → 1.08 over the clip duration) to ~30% of clips that are at least 3 seconds long. Keyframed in both the `.osp` and `.fcpxml`, so you can tune or disable per-clip in the editor.
-- `--captions` generates `input_cuts.srt` with word timestamps mapped to the NEW cut timeline (so filler words that were cut don't appear in the captions). Groups 3-5 words per line, up to ~2s each. Import the SRT into your editor — OpenShot, DaVinci, FCP and most players default to centered-bottom positioning.
-- `--seed <int>` makes the random zoom selection reproducible.
+`--captions` generates `input_cuts.srt` with word timestamps mapped to the NEW cut timeline (so filler words that were cut don't appear in the captions). Groups 3-5 words per line, up to ~2s each. Import the SRT into your editor — OpenShot, DaVinci, FCP and most players default to centered-bottom positioning.
 
 ## How to open the outputs
 
@@ -84,9 +82,7 @@ python3 clean_video.py input.mp4 --zoom --captions
 | `--model` | `base` (audio) / `small` (video) | Whisper size. `tiny` → `large`. Larger = slower + more accurate |
 | `--silence` | `0.8` | Seconds of silence above which to cut. Lower = more aggressive |
 | `--pad` | `0.1` | Safety margin (seconds) around each filler to avoid clipping real words |
-| `--zoom` | off | Video only. Adds keyframed Ken Burns zoom (1.0→1.08) to ~30% of clips ≥ 3s |
 | `--captions` | off | Video only. Emits a `.srt` subtitle file aligned to the cut timeline |
-| `--seed` | random | Video only. Seed for deterministic zoom selection |
 
 ## Language
 
